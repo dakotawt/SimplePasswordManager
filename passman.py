@@ -4,9 +4,11 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog
 import json
 import os
+
+#cryptography documentation: https://cryptography.io/en/latest/fernet/
+#NetworkChuck cryptography: https://www.youtube.com/watch?v=UtMMjXOlRQc
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
 from cryptography.fernet import Fernet
 import base64
@@ -17,7 +19,6 @@ MASTER_PASSWORD_FILE = 'master_password'
 def master_password_exists():
     return os.path.exists(MASTER_PASSWORD_FILE)
 
-#set master password
 def set_master_password():
     master_password = simpledialog.askstring("Set Master Password", "Enter a master password:", show='*')
 
@@ -32,7 +33,6 @@ def set_master_password():
 
     return master_password
 
-#check is master_password is correct
 def verify_master_password(master_password):
     if not master_password:
         return False
@@ -42,7 +42,6 @@ def verify_master_password(master_password):
 
     return bcrypt.checkpw(master_password.encode('utf-8'), stored_hash)
 
-#create a key from master password and salt
 def create_key(master_password, salt):
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -54,38 +53,30 @@ def create_key(master_password, salt):
     key = base64.urlsafe_b64encode(kdf.derive(master_password.encode('utf-8')))
     return key
 
-#encrpt using fernet and key
+#encryption
 def encrypt(plaintext, key):
     fernet = Fernet(key)
     ciphertext = fernet.encrypt(plaintext.encode('utf-8'))
     return ciphertext.decode('utf-8')
 
-#decrypt using a key via ferent
+#decryption
 def decrypt(ciphertext, key):
     fernet = Fernet(key)
     plaintext = fernet.decrypt(ciphertext.encode('utf-8'))
     return plaintext.decode('utf-8')
 
-#load json password file
 def load_passwords():
     if os.path.exists(PASSWORD_FILE):
         with open(PASSWORD_FILE, 'r') as f:
             return json.load(f)
     return []
 
-#save password to json file
 def save_passwords(passwords):
     with open(PASSWORD_FILE, 'w') as f:
         json.dump(passwords, f)
-
-#add password to json file
+        
+#add credentials; check to see if all fields were entered; encrypt password; save;
 def add_password():
-    master_password = simpledialog.askstring("Master Password", "Enter master password:", show='*')
-
-    if not verify_master_password(master_password):
-        messagebox.showerror("Error", "Incorrect master password")
-        return
-
     salt = os.urandom(16)
     key = create_key(master_password, salt)
 
@@ -104,15 +95,9 @@ def add_password():
     save_passwords(passwords)
 
     messagebox.showinfo("Success", "Password added successfully")
-    
-#show saved password bozo
+
+#decrypt pass; show credential
 def show_passwords():
-    master_password = simpledialog.askstring("Master Password", "Enter master password:", show='*')
-
-    if not master_password:
-        messagebox.showerror("Error", "Master password is required")
-        return
-
     passwords_window = tk.Toplevel(root)
     passwords_window.title("Stored Passwords")
 
@@ -125,7 +110,7 @@ def show_passwords():
             decrypted_password = decrypt(entry['password'], key)
         except:
             decrypted_password = 'Incorrect master password'
-
+            
         website_label = tk.Label(passwords_window, text=entry['website'])
         website_label.grid(row=index, column=0, sticky=tk.W, padx=10, pady=5)
 
@@ -135,14 +120,38 @@ def show_passwords():
         password_label = tk.Label(passwords_window, text=decrypted_password)
         password_label.grid(row=index, column=2, sticky=tk.W, padx=10, pady=5)
 
-#check to see if master password exists, if not create
+#remove cred based on input website        
+def remove_cred():
+    website_to_remove = simpledialog.askstring("Remove Credential", "Enter the website of the credential you want to remove:")
+
+    if not website_to_remove:
+        messagebox.showerror("Error", "Website is required")
+        return
+
+    passwords = load_passwords()
+
+    for index, entry in enumerate(passwords):
+        if entry['website'] == website_to_remove:
+            del passwords[index]
+            save_passwords(passwords)
+            messagebox.showinfo("Success", "Credential removed successfully")
+            return
+
+    messagebox.showerror("Error", "No password found for the given website")
+#assign a master password if one doesnt exist; if one does ask for input.
 if not master_password_exists():
     master_password = set_master_password()
     if not master_password:
         messagebox.showerror("Error", "Master password is required to use the password manager")
         sys.exit(1)
-        
-#boring window stuff. set window size to 450x350
+else:
+    master_password = simpledialog.askstring("Master Password", "Enter master password:", show='*')
+    if not verify_master_password(master_password):
+        messagebox.showerror("Error", "Incorrect master password")
+        sys.exit(1)
+
+#GUI implementation
+
 root = tk.Tk()
 root.geometry("450x300")
 root.title("Password Manager")
@@ -170,5 +179,8 @@ add_button.grid(row=3, column=0, pady=20)
 
 show_passwords_button = tk.Button(root, text="Show Passwords", command=show_passwords)
 show_passwords_button.grid(row=3, column=1, pady=20)
+
+remove_button = tk.Button(root, text="Remove Credential", command=remove_cred)
+remove_button.grid(row=3, column=2, pady=20)
 
 root.mainloop()
